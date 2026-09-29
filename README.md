@@ -2,7 +2,7 @@
 
 **One molecular behavior. Many scaffolds. A learnable, testable interface between design intent and chemistry.**
 
-This repository shows that molecular *function* (desired behavior under surrogate physicochemical and interaction proxies) can be learned as an explicit **Functional Specification** \(S\), and that a **single** \(S\) can be realized by **chemically diversified scaffolds** with stable behavior. The work is an experimental MVP for a behavioral design interface in molecular generation—not a claim of a universal molecular language.
+This repository shows that molecular *function* (desired behavior under surrogate physicochemical and interaction proxies) can be learned as an explicit **Functional Specification** $S$, and that a **single** $S$ can be realized by **chemically diversified scaffolds** with stable behavior. The work is an experimental MVP for a behavioral design interface in molecular generation—not a claim of a universal molecular language.
 
 <p align="center">
   <img src="docs/figures/fig_neighborhood_cartoon.png" alt="Soft neighborhoods in Spec space: high scaffold diversity, low behavior variance" width="720"/>
@@ -24,12 +24,12 @@ That is the intellectual core of this project: **behavior can be learned and pro
 
 | Result | What we measured | Takeaway |
 |--------|------------------|----------|
-| **Behavioral geometry** | Soft \(k\)-NN in \(S\) vs ECFP (\(k=32,64\); 80 probes) | Scaffold diversity matched; behavior variance ~½ of ECFP; \(v_S < v_{\mathrm{ECFP}}\) on **99%** of probes |
+| **Behavioral geometry** | Soft $k$-NN in $S$ vs ECFP ($k=32,64$; 80 probes) | Scaffold diversity matched; behavior variance ~½ of ECFP; $v_S < v_{\mathrm{ECFP}}$ on **99%** of probes |
 | **One Spec → many chemistries (G5)** | Fixed Spec, four sampling batches | **114** Murcko scaffolds / **136** unique molecules; batch-mean LogP std **0.12** |
-| **Controllable behavior (G4)** | FAN objectives → LogP ladder | Target vs realized mean LogP \(\rho \approx \mathbf{0.99}\) |
-| **Why Spec, not descriptors (G6a)** | Matched property-conditional decoder | \(S\) keeps control **and** ~**2×** scaffold diversity (56.5 vs 25.8 mean scaffolds) |
-| **Payload necessity (G6b)** | Scramble / random Spec | Control and diversity collapse when \(S\) is destroyed |
-| **Not a fingerprint bottleneck (E2)** | Structure vs behavior probes | E2 pass (\(\Delta \approx 0.28\)) |
+| **Controllable behavior (G4)** | FAN objectives → LogP ladder | Target vs realized mean LogP $\rho \approx 0.99$ |
+| **Why Spec, not descriptors (G6a)** | Matched property-conditional decoder | $S$ keeps control **and** ~**2×** scaffold diversity (56.5 vs 25.8 mean scaffolds) |
+| **Payload necessity (G6b)** | Scramble / random Spec | Control and diversity collapse when $S$ is destroyed |
+| **Not a fingerprint bottleneck (E2)** | Structure vs behavior probes | E2 pass ($\Delta \approx 0.28$) |
 
 <p align="center">
   <img src="docs/figures/fig_behavioral_geometry.png" alt="Behavioral geometry: Spec vs ECFP neighborhoods" width="720"/>
@@ -47,12 +47,12 @@ Full tables, protocols, and figure captions: **[RESULTS.md](RESULTS.md)**. Manus
 
 ### We claim
 
-1. Soft neighborhoods in \(S\) are **structure-diverse** and **behavior-coherent** relative to ECFP neighborhoods of matched size.
-2. \(S\) is a **controllable generative interface**: design objectives map through on-manifold Specs to molecules whose surrogate behavior moves predictably.
+1. Soft neighborhoods in $S$ are **structure-diverse** and **behavior-coherent** relative to ECFP neighborhoods of matched size.
+2. $S$ is a **controllable generative interface**: design objectives map through on-manifold Specs to molecules whose surrogate behavior moves predictably.
 3. **One Spec yields many chemistries** at stable behavior across repeats.
-4. The FiLM generator **depends on the Spec payload** (scramble / random \(S\) destroy control).
-5. Relative to a capacity-matched property-conditional decoder, \(S\) matches or beats property control and roughly **doubles** scaffold diversity.
-6. \(S\) is **not** merely a fingerprint bottleneck (E2 pass).
+4. The FiLM generator **depends on the Spec payload** (scramble / random $S$ destroy control).
+5. Relative to a capacity-matched property-conditional decoder, $S$ matches or beats property control and roughly **doubles** scaffold diversity.
+6. $S$ is **not** merely a fingerprint bottleneck (E2 pass).
 
 ### We do not claim
 
@@ -67,7 +67,7 @@ Full tables, protocols, and figure captions: **[RESULTS.md](RESULTS.md)**. Manus
 
 ## Limitation: frozen transfer (E9) — stated clearly
 
-**E9 asks:** if we freeze \(S\) and train only light prediction heads, does it beat strong baselines (e.g. ECFP) on held-out property tasks under a strict multi-task protocol?
+**E9 asks:** if we freeze $S$ and train only light prediction heads, does it beat strong baselines (e.g. ECFP) on held-out property tasks under a strict multi-task protocol?
 
 **Result:** under that strict protocol, frozen transfer succeeds on **1 of 5** tasks (**solubility only**).
 
@@ -77,7 +77,7 @@ We treat this as a **negative result and scope boundary**, not a soft footnote:
 |----------------|--------|
 | What failed | Universal “frozen Spec beats fingerprints everywhere” |
 | What remains valid | Spec as a **design / generation interface** on surrogate-aligned chemistry |
-| What we do *not* write | “\(S\) replaces fingerprints on all tasks” or “transferable foundation embedding” |
+| What we do *not* write | “$S$ replaces fingerprints on all tasks” or “transferable foundation embedding” |
 | Open question | Task-adaptive heads, richer supervision, or environment-derived Specs (Phase II)—not claimed here |
 
 NSF / grant readers: the MVP contribution is **behavioral geometry + controllable one-to-many realization**, not foundation-model transfer. E9 is reported honestly so the claim stays falsifiable.
@@ -86,7 +86,7 @@ NSF / grant readers: the MVP contribution is **behavioral geometry + controllabl
 
 ## Method in one paragraph
 
-Molecules are encoded into \(K\) learned slots, quantized with a vector-quantized codebook, and trained for multi-view **surrogate behavior** prediction (not molecule reconstruction as the planner objective). A Spec bank + Functional Abstraction Network (FAN) maps design objectives to on-manifold Specs. A SELFIES generator is conditioned on Spec via per-step FiLM. Evaluation protocols (E2, E3/G1–G5, G6a/b) test whether \(S\) organizes behavior, admits diversified scaffolds, and is necessary vs descriptors.
+Molecules are encoded into $K$ learned slots, quantized with a vector-quantized codebook, and trained for multi-view **surrogate behavior** prediction (not molecule reconstruction as the planner objective). A Spec bank + Functional Abstraction Network (FAN) maps design objectives to on-manifold Specs. A SELFIES generator is conditioned on Spec via per-step FiLM. Evaluation protocols (E2, E3/G1–G5, G6a/b) test whether $S$ organizes behavior, admits diversified scaffolds, and is necessary vs descriptors.
 
 ```text
 DesignObjective  →  FAN (Spec bank)  →  FunctionalSpecification S  →  Generator  →  Molecules
