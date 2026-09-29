@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Hero: scaffold-redundant function — many Murcko cores → one Spec S."""
+"""Hero: scaffold-redundant function — PIL-composed so molecules stay unstretched."""
 
 from __future__ import annotations
 
 import argparse
+import io
 import json
 from pathlib import Path
 
@@ -13,19 +14,34 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.patches import FancyBboxPatch, Circle, FancyArrowPatch
+from PIL import Image, ImageDraw, ImageFont
 from rdkit import Chem
 from rdkit.Chem import Draw
 from rdkit.Chem.Scaffolds import MurckoScaffold
 
 
-TEAL = "#0f766e"
-TEAL_DARK = "#115e59"
-STONE = "#78716c"
-INK = "#1c1917"
-MUTED = "#57534e"
-BG = "#fafaf9"
-CARD = "#ffffff"
+TEAL = (15, 118, 110)
+TEAL_DARK = (17, 94, 89)
+STONE = (120, 113, 108)
+INK = (28, 25, 23)
+MUTED = (87, 83, 78)
+BG = (250, 250, 249)
+CARD = (255, 255, 255)
+TEAL_SOFT = (236, 253, 245)
+
+
+def _font(size: int, bold: bool = False) -> ImageFont.ImageFont:
+    names = (
+        ["DejaVuSans-Bold.ttf", "DejaVuSans.ttf"]
+        if bold
+        else ["DejaVuSans.ttf", "DejaVuSans-Bold.ttf"]
+    )
+    for name in names:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
 
 
 def _murcko(smi: str) -> str | None:
@@ -36,19 +52,6 @@ def _murcko(smi: str) -> str | None:
         return MurckoScaffold.MurckoScaffoldSmiles(mol=m) or None
     except Exception:
         return None
-
-
-def _mol_img(smiles: str, size=(260, 200)):
-    m = Chem.MolFromSmiles(smiles)
-    if m is None:
-        return None
-    try:
-        sc = MurckoScaffold.GetScaffoldForMol(m)
-        if sc is not None and sc.GetNumAtoms() >= 3:
-            m = sc
-    except Exception:
-        pass
-    return Draw.MolToImage(m, size=size)
 
 
 def _knn(sim: np.ndarray, i: int, k: int) -> np.ndarray:
@@ -77,7 +80,6 @@ def _n_unique(smiles: list[str], idxs: np.ndarray) -> int:
 
 
 def _pick_probe(df: pd.DataFrame, smiles: list[str], s_sim, t_sim, k: int) -> tuple[pd.Series, int]:
-    """Prefer high behavior gap + more unique S scaffolds + lower mean ECFP diversity."""
     best = None
     best_score = -1e9
     for _, r in df.iterrows():
@@ -101,20 +103,85 @@ def _pick_probe(df: pd.DataFrame, smiles: list[str], s_sim, t_sim, k: int) -> tu
     return r, i
 
 
-def _card(ax, x, y, w, h, *, fc, ec, lw=1.5):
-    ax.add_patch(
-        FancyBboxPatch(
-            (x, y),
-            w,
-            h,
-            boxstyle="round,pad=0.02,rounding_size=0.12",
-            facecolor=fc,
-            edgecolor=ec,
-            lw=lw,
-            transform=ax.transData,
-            clip_on=False,
-        )
-    )
+def _mol_tile(smiles: str, *, edge: tuple[int, int, int], idx: int, tile: int = 360, pad: int = 18) -> Image.Image:
+    m = Chem.MolFromSmiles(smiles)
+    inner = tile - 2 * pad
+    if m is None:
+        mol_im = Image.new("RGB", (inner, inner), CARD)
+    else:
+        mol_im = Draw.MolToImage(m, size=(inner, inner))
+    canvas = Image.new("RGB", (tile, tile), CARD)
+    canvas.paste(mol_im, (pad, pad))
+    draw = ImageDraw.Draw(canvas)
+    for t in range(3):
+        draw.rectangle([t, t, tile - 1 - t, tile - 1 - t], outline=edge)
+    r = 15
+    cx, cy = 24, 24
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=CARD, outline=edge, width=2)
+    font = _font(15, bold=True)
+    label = str(idx)
+    bbox = draw.textbbox((0, 0), label, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text((cx - tw / 2, cy - th / 2 - 1), label, fill=edge, font=font)
+    return canvas
+
+
+def _grid(mols: list[str], *, edge: tuple[int, int, int], cols: int, tile: int, gap: int = 14) -> Image.Image:
+    rows = int(np.ceil(len(mols) / cols))
+    w = cols * tile + (cols - 1) * gap
+    h = rows * tile + (rows - 1) * gap
+    grid = Image.new("RGB", (w, h), BG)
+    for i, smi in enumerate(mols):
+        r, c = divmod(i, cols)
+        grid.paste(_mol_tile(smi, edge=edge, idx=i + 1, tile=tile), (c * (tile + gap), r * (tile + gap)))
+    return grid
+
+
+def _rounded_rect(draw: ImageDraw.ImageDraw, xy, *, fill, outline, width=2, radius=16):
+    draw.rounded_rectangle(xy, radius=radius, fill=fill, outline=outline, width=width)
+
+
+def _card(draw, xy, title: str, body: str, *, fill, outline, title_fill, body_fill=INK):
+    _rounded_rect(draw, xy, fill=fill, outline=outline, width=2, radius=14)
+    x0, y0, x1, y1 = xy
+    cx = (x0 + x1) / 2
+    draw.text((cx, y0 + 18), title, fill=title_fill, font=_font(13, bold=True), anchor="mt")
+    # body lines
+    font = _font(12)
+    lines = body.split("\n")
+    y = y0 + 48
+    for line in lines:
+        draw.text((cx, y), line, fill=body_fill, font=font, anchor="mt")
+        y += 16
+
+
+def _metrics_png(n_scaf_s, n_scaf_e, v_s, v_e, h_s, h_e, size=(420, 360)) -> Image.Image:
+    fig, ax = plt.subplots(figsize=(size[0] / 100, size[1] / 100), dpi=100, facecolor="white")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 3.5)
+    ax.axis("off")
+    ax.set_facecolor("white")
+    ax.text(0.5, 3.25, "Same probe,\ntwo geometries", ha="center", fontsize=11, fontweight="bold", color="#1c1917")
+    metrics = [
+        ("Unique scaffolds\n(higher = more redundant)", n_scaf_s, n_scaf_e),
+        ("Behavior variance\n(lower = tighter)", v_s, v_e),
+        ("Scaffold entropy H\n(higher = more diverse)", h_s, h_e),
+    ]
+    for mi, (label, vs, ve) in enumerate(metrics):
+        y = 2.55 - mi * 0.95
+        ax.text(0.06, y + 0.48, label, ha="left", va="center", fontsize=8, color="#57534e")
+        mmax = max(vs, ve, 1e-6)
+        ax.barh([y + 0.15], [0.58 * vs / mmax], height=0.18, left=0.06, color="#0f766e", label="S" if mi == 0 else None)
+        ax.barh([y - 0.08], [0.58 * ve / mmax], height=0.18, left=0.06, color="#78716c", label="ECFP" if mi == 0 else None)
+        fmt = lambda v: f"{v:.2f}" if isinstance(v, float) and v < 10 else f"{int(v)}"
+        ax.text(0.06 + 0.58 * vs / mmax + 0.02, y + 0.15, fmt(vs), va="center", fontsize=8, color="#115e59", fontweight="bold")
+        ax.text(0.06 + 0.58 * ve / mmax + 0.02, y - 0.08, fmt(ve), va="center", fontsize=8, color="#78716c", fontweight="bold")
+    ax.legend(loc="lower center", frameon=False, fontsize=9, ncol=2)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=100, facecolor="white", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return Image.open(buf).convert("RGB")
 
 
 def plot_hero(
@@ -136,219 +203,160 @@ def plot_hero(
     s_sim = Sn @ Sn.T
     fp_bin = (fp > 0).astype(np.float64)
     inter = fp_bin @ fp_bin.T
-    card = fp_bin.sum(axis=1, keepdims=True)
-    t_sim = inter / (card + card.T - inter + 1e-8)
+    cardn = fp_bin.sum(axis=1, keepdims=True)
+    t_sim = inter / (cardn + cardn.T - inter + 1e-8)
 
     df = pd.read_csv(soft_csv)
     row, i = _pick_probe(df, smiles, s_sim, t_sim, k)
-    s_nn = _knn(s_sim, i, k)
-    e_nn = _knn(t_sim, i, k)
-    s_mols = _unique(smiles, s_nn, n_s)
-    e_mols = _unique(smiles, e_nn, n_e)
+    s_mols = _unique(smiles, _knn(s_sim, i, k), n_s)
+    e_mols = _unique(smiles, _knn(t_sim, i, k), n_e)
     n_scaf_s = int(row["n_scaf_S"])
     n_scaf_e = int(row["n_scaf_ECFP"])
 
-    g5_scaffolds = None
-    g5_std = None
+    g5_scaffolds = g5_std = None
     if gen_eval and gen_eval.exists():
         g5 = json.loads(gen_eval.read_text())["G5"]
         g5_scaffolds = g5.get("union_n_scaffolds")
         g5_std = g5.get("behavior_mean_std_across_batches")
 
-    fig = plt.figure(figsize=(15.0, 9.2), facecolor=BG)
-    # rows: title | fan | contrast | footer metrics
-    gs = fig.add_gridspec(
-        3,
-        1,
-        height_ratios=[0.7, 3.6, 2.4],
-        hspace=0.18,
-        left=0.03,
-        right=0.97,
-        top=0.96,
-        bottom=0.05,
+    s_grid = _grid(s_mols[:8], edge=TEAL, cols=4, tile=360, gap=16)
+    e_grid = _grid(e_mols[:4], edge=STONE, cols=4, tile=300, gap=16)
+    metrics = _metrics_png(
+        n_scaf_s,
+        n_scaf_e,
+        float(row.v_beh_S),
+        float(row.v_beh_ECFP),
+        float(row.H_murcko_S),
+        float(row.H_murcko_ECFP),
     )
 
-    # ── Title ──────────────────────────────────────────────────────────────
-    ax_t = fig.add_subplot(gs[0])
-    ax_t.set_xlim(0, 1)
-    ax_t.set_ylim(0, 1)
-    ax_t.axis("off")
-    ax_t.text(0.5, 0.70, "Scaffold-redundant function", ha="center", va="center", fontsize=24, fontweight="bold", color=INK)
-    ax_t.text(
-        0.5,
-        0.22,
-        "One Functional Specification $S$  ·  many Murcko scaffolds  ·  shared surrogate behavior",
-        ha="center",
-        va="center",
-        fontsize=12,
-        color=MUTED,
+    margin = 40
+    gap = 20
+    content_w = s_grid.size[0]
+    # bottom row: e_grid + metrics
+    metrics = metrics.resize(
+        (max(280, content_w - e_grid.size[0] - gap), e_grid.size[1]),
+        Image.Resampling.BILINEAR,
     )
+    # keep metrics height match e_grid without stretching width wrongly — fit height
+    mh = e_grid.size[1]
+    mw = int(metrics.size[0] * (mh / metrics.size[1]))
+    metrics = metrics.resize((mw, mh), Image.Resampling.BILINEAR)
+    bottom_w = e_grid.size[0] + gap + metrics.size[0]
+    content_w = max(content_w, bottom_w)
 
-    # ── Fan: many scaffolds → one Spec ─────────────────────────────────────
-    ax = fig.add_subplot(gs[1])
-    ax.set_xlim(0, 15)
-    ax.set_ylim(0, 8.2)
-    ax.axis("off")
-    ax.set_facecolor(BG)
-
-    # Left rail: what "redundancy" means
-    _card(ax, 0.15, 5.9, 3.5, 2.0, fc="#ecfdf5", ec=TEAL, lw=1.6)
-    ax.text(1.9, 7.45, "THE CLAIM", ha="center", fontsize=9, fontweight="bold", color=TEAL_DARK)
-    ax.text(
-        1.9,
-        6.55,
-        "Behavior is scaffold-\nredundant under $S$:\nchemically different cores\ncan realize the same Spec.",
-        ha="center",
-        va="center",
-        fontsize=9.2,
-        color=INK,
+    # Header heights
+    title_h = 70
+    card_h = 120
+    label_h = 36
+    footer_h = 36
+    total_h = (
+        margin
+        + title_h
+        + gap
+        + card_h
+        + gap
+        + label_h
+        + s_grid.size[1]
+        + gap
+        + label_h
+        + 28
+        + e_grid.size[1]
+        + margin
+        + footer_h
     )
+    total_w = content_w + 2 * margin
 
-    # Headline numbers
-    _card(ax, 0.15, 3.55, 3.5, 2.1, fc=CARD, ec="#d6d3d1", lw=1.2)
-    ax.text(1.9, 5.25, "THIS NEIGHBORHOOD", ha="center", fontsize=8.5, fontweight="bold", color=STONE)
-    ax.text(1.9, 4.55, f"{n_scaf_s}", ha="center", fontsize=28, fontweight="bold", color=TEAL)
-    ax.text(1.9, 3.95, f"unique Murcko scaffolds\nin $S$ $k$={k} neighbors", ha="center", fontsize=8.5, color=MUTED)
+    canvas = Image.new("RGB", (total_w, total_h), BG)
+    draw = ImageDraw.Draw(canvas)
 
-    _card(ax, 0.15, 1.15, 3.5, 2.1, fc=CARD, ec="#d6d3d1", lw=1.2)
-    if g5_scaffolds is not None:
-        ax.text(1.9, 2.85, "GENERATION (G5)", ha="center", fontsize=8.5, fontweight="bold", color=STONE)
-        ax.text(1.9, 2.15, f"{g5_scaffolds}", ha="center", fontsize=28, fontweight="bold", color=TEAL)
-        ax.text(
-            1.9,
-            1.55,
-            f"scaffolds from one Spec\n(batch LogP std={g5_std:.2f})",
-            ha="center",
-            fontsize=8.5,
-            color=MUTED,
-        )
-    else:
-        ax.text(1.9, 2.2, f"$v_{{\\mathrm{{beh}}}}$ $S$={row.v_beh_S:.2f}\nvs ECFP={row.v_beh_ECFP:.2f}", ha="center", fontsize=12, color=INK)
+    y = margin
+    draw.text((total_w / 2, y + 8), "Scaffold-redundant function", fill=INK, font=_font(28, bold=True), anchor="mt")
+    draw.text(
+        (total_w / 2, y + 42),
+        "One Functional Specification S  ·  many distinct full molecules  ·  shared surrogate behavior",
+        fill=MUTED,
+        font=_font(14),
+        anchor="mt",
+    )
+    y += title_h + gap
 
-    # Hub Spec (center-right of fan)
-    hub_x, hub_y = 11.6, 4.1
-    ax.add_patch(Circle((hub_x, hub_y), 1.15, facecolor=TEAL, edgecolor=TEAL_DARK, lw=2, zorder=5))
-    ax.text(hub_x, hub_y + 0.28, "ONE", ha="center", va="center", fontsize=11, fontweight="bold", color="white", zorder=6)
-    ax.text(hub_x, hub_y - 0.15, "SPEC  $S$", ha="center", va="center", fontsize=13, fontweight="bold", color="white", zorder=6)
-    ax.text(hub_x, hub_y - 0.55, "shared behavior", ha="center", va="center", fontsize=8, color="#ccfbf1", zorder=6)
-
-    # Place S scaffolds in an arc around the hub (left side) — fan INTO the Spec
-    # Positions: grid of molecule cards on the left-center, arrows to hub
-    cols = 4
-    rows = int(np.ceil(len(s_mols) / cols))
-    x0, y0 = 4.0, 7.35
-    dx, dy = 1.55, 2.05
-    for idx, smi in enumerate(s_mols):
-        r, c = divmod(idx, cols)
-        # fill column-major-ish by rows
-        r, c = divmod(idx, cols)
-        cx = x0 + c * dx
-        cy = y0 - r * dy
-        # molecule card
-        _card(ax, cx - 0.68, cy - 0.85, 1.36, 1.55, fc=CARD, ec=TEAL, lw=1.8)
-        img = _mol_img(smi, size=(240, 180))
-        if img is not None:
-            # imshow in data coords via inset-like extent
-            ax.imshow(img, extent=(cx - 0.60, cx + 0.60, cy - 0.72, cy + 0.55), aspect="auto", zorder=4, origin="upper")
-        ax.text(cx - 0.55, cy + 0.58, f"{idx+1}", fontsize=7.5, fontweight="bold", color=TEAL, zorder=5,
-                bbox=dict(boxstyle="circle,pad=0.18", fc="white", ec=TEAL, lw=1.0))
-        # arrow from card to hub
-        ax.annotate(
-            "",
-            xy=(hub_x - 1.05, hub_y),
-            xytext=(cx + 0.70, cy),
-            arrowprops=dict(
-                arrowstyle="-|>",
-                color="#5eead4",
-                lw=1.3,
-                alpha=0.85,
-                mutation_scale=10,
-                connectionstyle="arc3,rad=0.08",
+    # 4 cards
+    card_w = (content_w - 3 * 12) // 4
+    x = margin
+    cards = [
+        ("THE CLAIM", "Behavior is scaffold-\nredundant under S:\nchemically different\nmolecules realize\nthe same Spec.", TEAL_SOFT, TEAL, TEAL_DARK),
+        ("THIS NEIGHBORHOOD", f"{n_scaf_s}\nunique Murcko in\nS k={k} neighbors", CARD, (214, 211, 209), STONE),
+        (
+            "GENERATION (G5)",
+            (
+                f"{g5_scaffolds}\nscaffolds from one Spec\n(batch LogP std={g5_std:.2f})"
+                if g5_scaffolds is not None
+                else f"v_beh S={row.v_beh_S:.2f}\nvs ECFP={row.v_beh_ECFP:.2f}"
             ),
-            zorder=3,
-        )
-
-    ax.text(
-        7.0,
-        0.35,
-        f"{len(s_mols)} distinct Murcko cores  →  converge on the same Spec  (scaffold redundancy)",
-        ha="center",
-        fontsize=10.5,
-        fontweight="bold",
-        color=TEAL_DARK,
-    )
-
-    # ── Bottom contrast strip ───────────────────────────────────────────────
-    gs2 = gs[2].subgridspec(1, 2, width_ratios=[1.55, 1.0], wspace=0.08)
-    ax_c = fig.add_subplot(gs2[0])
-    ax_c.set_xlim(0, 12)
-    ax_c.set_ylim(0, 4.2)
-    ax_c.axis("off")
-
-    _card(ax_c, 0.1, 0.15, 11.7, 3.9, fc=CARD, ec="#e7e5e4", lw=1.2)
-    ax_c.text(0.45, 3.55, "Contrast: fingerprint neighbors for the same probe", ha="left", fontsize=11, fontweight="bold", color=INK)
-    ax_c.text(
-        0.45,
-        3.05,
-        f"ECFP $k$={k}: {n_scaf_e} unique scaffolds  ·  higher behavior variance "
-        f"($v_{{\\mathrm{{beh}}}}$={row.v_beh_ECFP:.2f} vs $S$={row.v_beh_S:.2f})",
-        ha="left",
-        fontsize=9,
-        color=MUTED,
-    )
-
-    for idx, smi in enumerate(e_mols[:6]):
-        cx = 1.15 + idx * 1.85
-        cy = 1.45
-        _card(ax_c, cx - 0.75, cy - 0.95, 1.5, 1.7, fc="#fafaf9", ec=STONE, lw=1.4)
-        img = _mol_img(smi, size=(220, 170))
-        if img is not None:
-            ax_c.imshow(img, extent=(cx - 0.65, cx + 0.65, cy - 0.80, cy + 0.55), aspect="auto", zorder=4, origin="upper")
-
-    ax_c.text(6.0, 0.35, "Structure-similar search does not target scaffold-redundant function", ha="center", fontsize=8.5, color=STONE, style="italic")
-
-    # Metric bars panel
-    ax_m = fig.add_subplot(gs2[1])
-    ax_m.set_facecolor(CARD)
-    metrics = [
-        ("Unique scaffolds\n(higher = more redundant)", n_scaf_s, n_scaf_e),
-        ("Behavior variance\n(lower = tighter function)", float(row.v_beh_S), float(row.v_beh_ECFP)),
-        ("Scaffold entropy $H$\n(higher = more diverse)", float(row.H_murcko_S), float(row.H_murcko_ECFP)),
+            CARD,
+            (214, 211, 209),
+            STONE,
+        ),
     ]
-    # three small horizontal comparisons
-    ax_m.set_xlim(0, 1)
-    ax_m.set_ylim(0, 3.4)
-    ax_m.axis("off")
-    ax_m.text(0.5, 3.15, "Same probe, two geometries", ha="center", fontsize=10.5, fontweight="bold", color=INK)
+    for title, body, fill, outline, tc in cards:
+        _card(draw, (x, y, x + card_w, y + card_h), title, body, fill=fill, outline=outline, title_fill=tc)
+        x += card_w + 12
+    # Spec hub card
+    _rounded_rect(draw, (x, y, x + card_w, y + card_h), fill=TEAL, outline=TEAL_DARK, width=2, radius=14)
+    draw.text((x + card_w / 2, y + 48), "ONE SPEC  S", fill=CARD, font=_font(15, bold=True), anchor="mt")
+    draw.text((x + card_w / 2, y + 78), "shared behavior", fill=(204, 251, 241), font=_font(12), anchor="mt")
+    y += card_h + gap
 
-    for mi, (label, vs, ve) in enumerate(metrics):
-        y = 2.45 - mi * 1.0
-        ax_m.text(0.05, y + 0.55, label, ha="left", va="center", fontsize=8, color=MUTED)
-        # normalize bar widths within row
-        m = max(vs, ve, 1e-6)
-        ax_m.barh([y + 0.18], [0.55 * vs / m], height=0.22, left=0.05, color=TEAL, label="$S$" if mi == 0 else None)
-        ax_m.barh([y - 0.08], [0.55 * ve / m], height=0.22, left=0.05, color=STONE, label="ECFP" if mi == 0 else None)
-        ax_m.text(0.05 + 0.55 * vs / m + 0.02, y + 0.18, f"{vs:.2f}" if isinstance(vs, float) and vs < 10 else f"{vs:.0f}",
-                  va="center", fontsize=8, color=TEAL_DARK, fontweight="bold")
-        ax_m.text(0.05 + 0.55 * ve / m + 0.02, y - 0.08, f"{ve:.2f}" if isinstance(ve, float) and ve < 10 else f"{ve:.0f}",
-                  va="center", fontsize=8, color=STONE, fontweight="bold")
-    ax_m.legend(loc="lower right", frameon=False, fontsize=8)
+    draw.text(
+        (margin, y + 8),
+        "S neighbors — full molecules (unique Murcko), all map to the same Spec",
+        fill=TEAL_DARK,
+        font=_font(15, bold=True),
+        anchor="lt",
+    )
+    y += label_h
+    canvas.paste(s_grid, (margin, y))
+    y += s_grid.size[1] + gap
 
-    fig.text(
-        0.5,
-        0.012,
-        "Real Corpus A probe  ·  Murcko scaffolds of nearest neighbors  ·  "
-        "G5 count from Spec-conditioned generation (LogP=2.5)",
-        ha="center",
-        fontsize=8,
-        color="#a8a29e",
+    draw.text(
+        (margin, y + 4),
+        "Contrast: ECFP neighbors for the same probe (full molecules)",
+        fill=INK,
+        font=_font(14, bold=True),
+        anchor="lt",
+    )
+    draw.text(
+        (margin, y + 24),
+        f"k={k}: {n_scaf_e} unique scaffolds  ·  higher v_beh ({row.v_beh_ECFP:.2f} vs S={row.v_beh_S:.2f})  ·  structure search ≠ scaffold-redundant function",
+        fill=MUTED,
+        font=_font(11),
+        anchor="lt",
+    )
+    y += label_h + 28
+    canvas.paste(e_grid, (margin, y))
+    canvas.paste(metrics, (margin + e_grid.size[0] + gap, y))
+    y += e_grid.size[1] + 16
+
+    draw.text(
+        (total_w / 2, y + 4),
+        "Full molecules (unique by Murcko)  ·  real Corpus A probe  ·  G5 from Spec-conditioned generation (LogP=2.5)",
+        fill=(168, 162, 158),
+        font=_font(11),
+        anchor="mt",
     )
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out.with_suffix(".png"), dpi=220, bbox_inches="tight", facecolor=BG)
-    fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight", facecolor=BG)
+    canvas.save(out.with_suffix(".png"))
+    # PDF via matplotlib wrapper of the PNG (lossless-ish embed)
+    fig = plt.figure(figsize=(total_w / 100, total_h / 100), dpi=100)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.imshow(np.asarray(canvas), aspect="equal", interpolation="nearest")
+    ax.axis("off")
+    fig.savefig(out.with_suffix(".pdf"), dpi=100)
     plt.close(fig)
-    print(f"wrote {out}.{{png,pdf}}")
+
+    print(f"wrote {out}.{{png,pdf}}  size={canvas.size}")
     print(f"S scaffolds={n_scaf_s} ECFP={n_scaf_e}  vS={row.v_beh_S:.3f} vE={row.v_beh_ECFP:.3f}")
 
 
@@ -360,7 +368,7 @@ def main() -> None:
     p.add_argument("--out", type=Path, default=Path("docs/figures/fig_hero"))
     p.add_argument("--k", type=int, default=64)
     p.add_argument("--n-s", type=int, default=8)
-    p.add_argument("--n-e", type=int, default=6)
+    p.add_argument("--n-e", type=int, default=4)
     args = p.parse_args()
     plot_hero(
         args.embeddings,

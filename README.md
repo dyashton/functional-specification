@@ -5,9 +5,9 @@
 This repository shows that molecular *function* (desired behavior under surrogate physicochemical and interaction proxies) can be learned as an explicit **Functional Specification** $S$, and that a **single** $S$ can be realized by **chemically diversified scaffolds** with stable behavior. The work is an experimental MVP for a behavioral design interface in molecular generation—not a claim of a universal molecular language.
 
 <p align="center">
-  <img src="docs/figures/fig_hero.png" alt="Scaffold-redundant function: many Murcko scaffolds converge on one Functional Specification S" width="920"/>
+  <img src="docs/figures/fig_hero.png" alt="Scaffold-redundant function: many full molecules converge on one Functional Specification S" width="780"/>
 </p>
-<p align="center"><em>One Spec → many scaffolds at shared behavior; fingerprint neighbors for the same probe do not target that redundancy.</em></p>
+<p align="center"><em>Full molecules (unique by Murcko) converge on one Spec; fingerprint neighbors for the same probe do not target that redundancy.</em></p>
 
 ---
 
