@@ -1,0 +1,69 @@
+# Functional Specification MVP — default experiment config
+
+corpus_a:
+  # Bootstrap: CO2-scored GuacaMol components (~20k). Replace with full GuacaMol/ZINC ≥50k for paper runs.
+  source: bridge_scored_components
+  min_size: 50000  # paper target; bridge may be smaller
+  scaffold_split:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+    seed: 42
+  surrogate_views:
+    - MW
+    - LogP
+    - TPSA
+    - QED
+    - HBA
+    - HBD
+    - nRot
+    - HallKierAlpha
+    - apol
+    - basicity
+    - PFC_composite
+
+corpus_b:
+  source: co2_ie_compiled
+  strong_ie_max: -6.0   # kcal/mol; more negative = stronger
+  weak_ie_min: -3.0
+  scaffold_split:
+    train: 0.7
+    val: 0.15
+    test: 0.15
+    seed: 42
+
+contrastive:
+  w_desc: 1.0
+  w_qm: 0.5
+  w_bind: 1.0
+  w_interaction: 0.5
+  w_ecfp: 1.0  # subtracted
+  temperature: 0.07
+
+model:
+  encoder: gine
+  hidden_dim: 256
+  num_layers: 4
+  num_slots: 12
+  codebook_sizes: [32, 64, 128, 256, 512]
+  primary_codebook: 128
+  commitment_cost: 0.25
+
+generators:
+  arm_a: smiles_transformer  # S → atoms
+  arm_b: learned_motifs      # S → learned motifs → atoms
+  primary_arm: arm_a         # ship A first if B unstable
+  arm_b_motif_codebook: 256
+  arm_b_motif_dim: 128
+  arm_b_max_motifs: 8
+  arm_b_vocab_size: 256
+
+e9_train_tasks: [homo, lumo, dipole, co2_ie, pfc]
+e9_heldout_tasks: [solubility, toxicity, permeability, heldout_binding, flexibility]
+
+eval:
+  e3_n_samples: 1000
+  e3_n_specs: 5
+  e6_n_samples: 100
+  e7_n_samples: 200
+  behavior_match_tol: 0.15  # normalized L2 for matched-behavior baseline

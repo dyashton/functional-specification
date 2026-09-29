@@ -1,0 +1,28 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.ruff_cache/
+.mypy_cache/
+*.pt
+*.pth
+*.npz
+*.ckpt
+*.log
+
+# Data and large run artifacts are not part of the public repo
+data/raw/
+data/processed/*
+!data/processed/.gitkeep
+runs/*
+!runs/.gitkeep
+
+# Local / editor
+.env
+.env.*
+.DS_Store
+.idea/
+.vscode/
